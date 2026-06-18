@@ -11,8 +11,9 @@ const ALLOWED_CATEGORIES = ['reviewed', 'needs-review', 'ignore', ''];
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 
-// --- category storage --------------------------------------------------------
-function loadCategories() {
+// --- storage -----------------------------------------------------------------
+// Shape: { [repo]: { categories: {path: category}, order: [path, ...] } }
+function loadStore() {
   try {
     return JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
   } catch {
@@ -20,8 +21,16 @@ function loadCategories() {
   }
 }
 
-function saveCategories(data) {
+function saveStore(data) {
   fs.writeFileSync(STORE_FILE, JSON.stringify(data, null, 2));
+}
+
+// Normalize a repo entry, tolerating the older flat {path: category} shape.
+function repoEntry(store, repo) {
+  const e = store[repo];
+  if (!e) return { categories: {}, order: [] };
+  if (e.categories || e.order) return { categories: e.categories || {}, order: e.order || [] };
+  return { categories: e, order: [] };
 }
 
 // --- git status --------------------------------------------------------------
@@ -90,27 +99,35 @@ const server = http.createServer((req, res) => {
     if (!fs.existsSync(repo)) return sendJSON(res, 400, { error: 'Path does not exist on this machine.' });
     gitStatus(repo, (e, files) => {
       if (e) return sendJSON(res, e.status, { error: e.message });
-      const saved = loadCategories()[repo] || {};
-      files.forEach(f => { f.category = saved[f.path] || ''; });
+      const { categories, order } = repoEntry(loadStore(), repo);
+      files.forEach(f => { f.category = categories[f.path] || ''; });
+      // Sort by saved order; files with no saved order keep git order at the end.
+      const rank = new Map(order.map((p, i) => [p, i]));
+      files.sort((a, b) => (rank.has(a.path) ? rank.get(a.path) : Infinity) -
+                           (rank.has(b.path) ? rank.get(b.path) : Infinity));
       sendJSON(res, 200, { repo, files });
     });
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/category') {
+  // Save the whole board at once: category per file + the global file order.
+  if (req.method === 'POST' && url.pathname === '/api/board') {
     let body = '';
     req.on('data', c => { body += c; });
     req.on('end', () => {
       let parsed;
       try { parsed = JSON.parse(body); } catch { return sendJSON(res, 400, { error: 'Invalid JSON.' }); }
-      const { repo, path: file, category } = parsed;
-      if (!repo || !file) return sendJSON(res, 400, { error: 'repo and path are required.' });
-      if (!ALLOWED_CATEGORIES.includes(category)) return sendJSON(res, 400, { error: 'Invalid category.' });
-      const data = loadCategories();
-      if (!data[repo]) data[repo] = {};
-      if (category) data[repo][file] = category;
-      else delete data[repo][file];
-      saveCategories(data);
+      const { repo, order } = parsed;
+      if (!repo || !Array.isArray(order)) return sendJSON(res, 400, { error: 'repo and order[] are required.' });
+      const categories = {};
+      for (const item of order) {
+        if (!item || typeof item.path !== 'string') return sendJSON(res, 400, { error: 'Invalid order item.' });
+        if (!ALLOWED_CATEGORIES.includes(item.category)) return sendJSON(res, 400, { error: 'Invalid category.' });
+        if (item.category) categories[item.path] = item.category;
+      }
+      const store = loadStore();
+      store[repo] = { categories, order: order.map(i => i.path) };
+      saveStore(store);
       sendJSON(res, 200, { ok: true });
     });
     return;

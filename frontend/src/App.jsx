@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, pointerWithin } from '@dnd-kit/core';
-import { fetchStatus, setCategory } from './api.js';
+import { fetchStatus, saveBoard } from './api.js';
 import { COLUMNS } from './columns.js';
 import Board from './Board.jsx';
 import { CardView } from './Card.jsx';
@@ -15,7 +15,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [activeId, setActiveId] = useState(null);
-  const dragStartCategory = useRef('');
+  const dragStartFiles = useRef([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -39,14 +39,11 @@ export default function App() {
     }
   }
 
-  function categoryOf(path) {
-    const f = files.find(x => x.path === path);
-    return f ? (f.category || '') : '';
-  }
+  const signature = list => list.map(f => f.path + ':' + (f.category || '')).join('|');
 
   function onDragStart({ active }) {
     setActiveId(active.id);
-    dragStartCategory.current = categoryOf(active.id);
+    dragStartFiles.current = files;
   }
 
   // Reorder the global files list so the dragged card sits exactly where the
@@ -87,22 +84,23 @@ export default function App() {
     });
   }
 
-  async function onDragEnd({ active }) {
+  function onDragEnd() {
     setActiveId(null);
-    const target = categoryOf(active.id);
-    if (target === dragStartCategory.current) return;
-    try {
-      await setCategory(repo, active.id, target);
-    } catch (e) {
-      const prevCat = dragStartCategory.current;
-      setFiles(fs => fs.map(f => f.path === active.id ? { ...f, category: prevCat } : f));
-      setError(e.message);
-    }
+    setFiles(current => {
+      // Persist only if category or order actually changed.
+      if (signature(current) !== signature(dragStartFiles.current)) {
+        const snapshot = current;
+        saveBoard(repo, snapshot).catch(e => {
+          setFiles(dragStartFiles.current); // revert on failure
+          setError(e.message);
+        });
+      }
+      return current;
+    });
   }
 
   function onDragCancel() {
-    const prevCat = dragStartCategory.current;
-    setFiles(fs => fs.map(f => f.path === activeId ? { ...f, category: prevCat } : f));
+    setFiles(dragStartFiles.current);
     setActiveId(null);
   }
 

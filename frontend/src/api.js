@@ -31,14 +31,16 @@ export async function fetchStatus(repo) {
   return data;
 }
 
-export async function setCategory(repo, path, category) {
-  const res = await fetch('/api/category', {
+// Persist the whole board: each file's category and the overall order.
+export async function saveBoard(repo, files) {
+  const order = files.map(f => ({ path: f.path, category: f.category || '' }));
+  const res = await fetch('/api/board', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repo, path, category }),
+    body: JSON.stringify({ repo, order }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to save category.');
+    throw new Error(data.error || 'Failed to save board.');
   }
 }
