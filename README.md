@@ -20,7 +20,9 @@ The **backend** is zero-dependency Node.js (`server.js`). The **frontend** is a 
   ```
 
 ## Run (normal use)
-The frontend is already built into `public/`, so you only need the server:
+**Windows:** double-click **`start.bat`** — it launches the server and opens <http://localhost:3000> in your browser. Close the window (or press a key, then `Ctrl+C`) to stop it.
+
+Or from a terminal — the frontend is already built into `public/`, so you only need the server:
 ```
 node server.js
 ```
