@@ -2,11 +2,6 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// Show only the file name, not the directory.
-function basename(p) {
-  return p.split(/[\\/]/).pop();
-}
-
 function badgeClass(label) {
   return 'badge badge-' + String(label || 'changed').toLowerCase();
 }
@@ -16,7 +11,7 @@ export function CardView({ file, overlay }) {
   return (
     <div className={`card${overlay ? ' overlay' : ''}`}>
       <span className={badgeClass(file.label)}>{file.label}</span>
-      <span className="card-file" title={file.path}>{basename(file.path)}</span>
+      <span className="card-file" title={file.path}>{file.displayName || file.path}</span>
     </div>
   );
 }
